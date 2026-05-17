@@ -288,14 +288,21 @@ local CreditsTab  = Window:CreateTab("Credits",   7733765137)
 ------------------------------------------------------------
 MainTab:CreateSection("Farming")
 
-local AUTO_MONEY_ARGS = {
-    "AnalyticsRE",
-    "Update_Money",
-    "Slide Down",
-    "Give",
-    4.2266505545686663e+43,
-    205482029046,
-}
+-- Configurable money amount. The original captured value is preserved as the
+-- default; the slider/input below let you push it higher live.
+local DEFAULT_MONEY = 4.2266505545686663e+43
+State.MoneyAmount = DEFAULT_MONEY
+
+local function buildAutoMoneyArgs()
+    return {
+        "AnalyticsRE",
+        "Update_Money",
+        "Slide Down",
+        "Give",
+        State.MoneyAmount,
+        205482029046,
+    }
+end
 
 local function fireAutoMoneyOnce()
     local funnel = ReplicatedStorage:FindFirstChild("R_Funnel")
@@ -303,7 +310,7 @@ local function fireAutoMoneyOnce()
         funnel = ReplicatedStorage:WaitForChild("R_Funnel", 5)
     end
     if funnel and funnel:IsA("RemoteEvent") then
-        funnel:FireServer(unpack(AUTO_MONEY_ARGS))
+        funnel:FireServer(unpack(buildAutoMoneyArgs()))
     end
 end
 
@@ -341,6 +348,45 @@ MainTab:CreateSlider({
     Callback = function(value)
         -- Hard floor 0.1s to prevent spam-induced client crashes
         State.AutoMoneyInterval = math.max(0.1, value)
+    end,
+})
+
+MainTab:CreateInput({
+    Name = "Money Amount (per fire)",
+    PlaceholderText = "e.g. 1e50, 9e99, 4.22e43",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(text)
+        local n = tonumber(text)
+        if n and n > 0 then
+            State.MoneyAmount = n
+            notify("Money Amount", ("Set to %s"):format(tostring(n)), 3)
+        else
+            notify("Money Amount", "Invalid number — keeping previous value", 3)
+        end
+    end,
+})
+
+MainTab:CreateButton({
+    Name = "Preset: Default (4.22e+43)",
+    Callback = function()
+        State.MoneyAmount = DEFAULT_MONEY
+        notify("Money Amount", "Reset to default", 2)
+    end,
+})
+
+MainTab:CreateButton({
+    Name = "Preset: Insane (1e+99)",
+    Callback = function()
+        State.MoneyAmount = 1e99
+        notify("Money Amount", "Set to 1e+99", 2)
+    end,
+})
+
+MainTab:CreateButton({
+    Name = "Preset: Max (math.huge)",
+    Callback = function()
+        State.MoneyAmount = math.huge
+        notify("Money Amount", "Set to math.huge — server may reject", 3)
     end,
 })
 
