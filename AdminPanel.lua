@@ -226,12 +226,30 @@ end
 ------------------------------------------------------------
 showIntro()
 
-local Rayfield
-local ok, err = pcall(function()
-    Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
-end)
-if not ok or not Rayfield then
-    warn("[CS Admin] Failed to load Rayfield: " .. tostring(err))
+-- Try multiple Rayfield sources; sirius.menu has been serving a broken build
+-- ("Template is not a valid member of Frame 'Notifications'"), so we fall
+-- back to the official GitHub raw URL and a mirror.
+local RAYFIELD_SOURCES = {
+    "https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua",
+    "https://sirius.menu/rayfield",
+    "https://raw.githubusercontent.com/shlexware/Rayfield/main/source",
+}
+
+local Rayfield, lastErr
+for _, url in ipairs(RAYFIELD_SOURCES) do
+    local ok, errOrLib = pcall(function()
+        return loadstring(game:HttpGet(url))()
+    end)
+    if ok and errOrLib then
+        Rayfield = errOrLib
+        break
+    else
+        lastErr = errOrLib
+    end
+end
+
+if not Rayfield then
+    warn("[CS Admin] Failed to load Rayfield from any source: " .. tostring(lastErr))
     return
 end
 
@@ -264,13 +282,18 @@ local Window = Rayfield:CreateWindow({
     },
 })
 
+-- Rayfield's :Notify can throw if its internal Notifications template is
+-- missing (CDN ships a bad build occasionally). Wrap in pcall so a notif
+-- failure never breaks a callback.
 local function notify(title, content, duration, image)
-    Rayfield:Notify({
-        Title    = title or "Climb & Slide",
-        Content  = content or "",
-        Duration = duration or 4,
-        Image    = image or 4483362458,
-    })
+    pcall(function()
+        Rayfield:Notify({
+            Title    = title or "Climb & Slide",
+            Content  = content or "",
+            Duration = duration or 4,
+            Image    = image or 4483362458,
+        })
+    end)
 end
 
 ------------------------------------------------------------
@@ -858,4 +881,8 @@ pcall(function() Rayfield:LoadConfiguration() end)
 applyWalkSpeed(State.WalkSpeed)
 applyJumpPower(State.JumpPower)
 
-notify("Climb & Slide", "Hub loaded successfully — enjoy!", 4, 4483362458)
+-- Wait a beat so Rayfield's Notifications frame is fully built before the
+-- first :Notify call (avoids "Template is not a valid member" race).
+task.delay(0.6, function()
+    notify("Climb & Slide", "Hub loaded successfully — enjoy!", 4, 4483362458)
+end)
