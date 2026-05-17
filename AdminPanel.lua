@@ -311,30 +311,62 @@ local CreditsTab  = Window:CreateTab("Credits",   7733765137)
 ------------------------------------------------------------
 MainTab:CreateSection("Farming")
 
--- Configurable money amount. The original captured value is preserved as the
--- default; the slider/input below let you push it higher live.
+-- NOTE: "AnalyticsRE" / "Update_Money" looks like a telemetry path, not the
+-- real money-credit remote. If money never increases, the captured args are
+-- analytics-only; use a remote spy to find the actual credit remote and
+-- swap RemoteName / Route1 / amount via the inputs on the Main tab.
 local DEFAULT_MONEY = 4.2266505545686663e+43
 State.MoneyAmount = DEFAULT_MONEY
+State.RemoteName  = "R_Funnel"
+State.Route1      = "AnalyticsRE"
+State.UserId      = 205482029046
+State.DebugFires  = false
+State.FireCount   = 0
+
+local tunpack = table.unpack or unpack
 
 local function buildAutoMoneyArgs()
     return {
-        "AnalyticsRE",
+        State.Route1,
         "Update_Money",
         "Slide Down",
         "Give",
         State.MoneyAmount,
-        205482029046,
+        State.UserId,
     }
 end
 
 local function fireAutoMoneyOnce()
-    local funnel = ReplicatedStorage:FindFirstChild("R_Funnel")
+    local funnel = ReplicatedStorage:FindFirstChild(State.RemoteName)
     if not funnel then
-        funnel = ReplicatedStorage:WaitForChild("R_Funnel", 5)
+        funnel = ReplicatedStorage:WaitForChild(State.RemoteName, 2)
     end
-    if funnel and funnel:IsA("RemoteEvent") then
-        funnel:FireServer(unpack(buildAutoMoneyArgs()))
+    if not funnel then
+        if State.DebugFires then warn("[CS Admin] Remote not found: " .. State.RemoteName) end
+        return false
     end
+
+    local args = buildAutoMoneyArgs()
+    local ok2, err2
+    if funnel:IsA("RemoteEvent") then
+        ok2, err2 = pcall(function() funnel:FireServer(tunpack(args)) end)
+    elseif funnel:IsA("RemoteFunction") then
+        ok2, err2 = pcall(function() return funnel:InvokeServer(tunpack(args)) end)
+    else
+        if State.DebugFires then warn("[CS Admin] " .. State.RemoteName .. " is not a remote") end
+        return false
+    end
+
+    if State.DebugFires then
+        State.FireCount = State.FireCount + 1
+        if ok2 then
+            print(("[CS Admin] Fire #%d OK  amount=%s  remote=%s"):format(
+                State.FireCount, tostring(State.MoneyAmount), State.RemoteName))
+        else
+            warn(("[CS Admin] Fire #%d FAILED: %s"):format(State.FireCount, tostring(err2)))
+        end
+    end
+    return ok2
 end
 
 MainTab:CreateToggle({
@@ -422,6 +454,45 @@ MainTab:CreateButton({
         else
             notify("Manual Fire", "Failed: " .. tostring(err2), 4)
         end
+    end,
+})
+
+MainTab:CreateSection("Advanced (if money isn't increasing)")
+
+MainTab:CreateLabel("AnalyticsRE looks like telemetry. If money doesn't go up, the captured remote isn't the credit remote — find the real one with a remote spy and edit below.")
+
+MainTab:CreateInput({
+    Name = "Remote Name (under ReplicatedStorage)",
+    PlaceholderText = "R_Funnel",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(text)
+        if text and #text > 0 then
+            State.RemoteName = text
+            notify("Remote", "Now using: " .. text, 2)
+        end
+    end,
+})
+
+MainTab:CreateInput({
+    Name = "Route Tag (arg #1)",
+    PlaceholderText = "AnalyticsRE",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(text)
+        if text and #text > 0 then
+            State.Route1 = text
+            notify("Route", "Now using: " .. text, 2)
+        end
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Debug: Print Fires to Console",
+    CurrentValue = false,
+    Flag = "DebugFires",
+    Callback = function(value)
+        State.DebugFires = value
+        State.FireCount = 0
+        notify("Debug", value and "Printing each fire to console (F9)" or "Debug off", 3)
     end,
 })
 
